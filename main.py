@@ -12,6 +12,38 @@ NUM_STEPS = 90
 SCAN_SPAN = 135
 
 
+# 1D Convolution
+def convolve_sinogram(img, kernelSize=9):
+    # Convert to numpy array if not already
+    sino = np.array(img)
+
+    # Create kernel with the same logic as the original
+    kernelCenter = int(kernelSize / 2)
+    kernel = np.zeros(kernelSize)
+
+    # Fill kernel with values
+    for i in range(kernelSize):
+        if i == kernelCenter:
+            kernel[i] = 1.0
+        elif i % 2 == 0:
+            kernel[i] = 0.0
+        else:
+            kernel[i] = (-4 / pow(math.pi, 2)) / pow(i - kernelCenter, 2)
+
+    # Create output array with same shape
+    filtered_sino = np.zeros_like(sino)
+
+    # Apply convolution to each row using numpy.convolve
+    for i in range(sino.shape[0]):
+        filtered_sino[i, :] = np.convolve(sino[i, :], kernel, mode='same')
+
+    return filtered_sino
+
+
+def get_max(sinogram):
+    return max([item for k in sinogram for item in k])
+
+
 def generate_parallel_rays(radius, center, angle=45, span=120, num_rays=20):
     alpha = math.radians(angle)
     theta = math.radians(span)
@@ -103,23 +135,61 @@ def main():
         print(f"Calculating sinogram with {NUM_PROJECTIONS} detectors, {NUM_STEPS} steps, span {SCAN_SPAN}°...")
         sinogram = radon_transform(input_image, num_steps=NUM_STEPS, span=SCAN_SPAN, num_rays=NUM_PROJECTIONS)
 
-        plt.figure(figsize=(8, 6))
-        plt.imshow(transpose_sinogram(sinogram), cmap="gray", aspect='auto')
-        plt.title("Sinogram")
+        # Apply filtering to the sinogram
+        print("Filtering sinogram...")
+        filtered_sinogram = np.array(convolve_sinogram(sinogram.tolist()))
+
+        # Display original and filtered sinogram
+        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+        axs[0].imshow(transpose_sinogram(sinogram), cmap="gray", aspect='auto')
+        axs[0].set_title("Original Sinogram")
+        axs[0].axis('off')
+
+        axs[1].imshow(transpose_sinogram(filtered_sinogram), cmap="gray", aspect='auto')
+        axs[1].set_title("Filtered Sinogram")
+        axs[1].axis('off')
+
+        plt.tight_layout()
         plt.show()
 
         print("Reconstructing image...")
-        reconstructed_image = inverse_radon_transform(sinogram, input_image, num_steps=NUM_STEPS,
+        # Use filtered sinogram for reconstruction
+        reconstructed_image = inverse_radon_transform(filtered_sinogram, input_image, num_steps=NUM_STEPS,
                                                       span=SCAN_SPAN, num_rays=NUM_PROJECTIONS)
 
-        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
-        axs[0].imshow(input_image, cmap='gray')
-        axs[0].set_title('Original Image')
-        axs[0].axis('off')
+        # Show all process stages
+        fig, axs = plt.subplots(2, 2, figsize=(15, 12))
 
-        axs[1].imshow(reconstructed_image, cmap='gray')
-        axs[1].set_title('Reconstructed Image')
-        axs[1].axis('off')
+        # Original Image
+        axs[0, 0].imshow(input_image, cmap='gray')
+        axs[0, 0].set_title('Original Image')
+        axs[0, 0].axis('off')
+
+        # Original Sinogram
+        axs[0, 1].imshow(transpose_sinogram(sinogram), cmap='gray', aspect='auto')
+        axs[0, 1].set_title('Original Sinogram')
+        axs[0, 1].axis('off')
+
+        # Filtered Sinogram
+        axs[1, 0].imshow(transpose_sinogram(filtered_sinogram), cmap='gray', aspect='auto')
+        axs[1, 0].set_title('Filtered Sinogram')
+        axs[1, 0].axis('off')
+
+        # Reconstructed Image
+        axs[1, 1].imshow(reconstructed_image, cmap='gray')
+        axs[1, 1].set_title('Reconstructed Image (with Filtering)')
+        axs[1, 1].axis('off')
+
+        # Reconstruction without sinogram filtering
+        print("Reconstructing unfiltered image...")
+        unfiltered_reconstructed = inverse_radon_transform(sinogram, input_image, num_steps=NUM_STEPS,
+                                    span=SCAN_SPAN, num_rays=NUM_PROJECTIONS)
+
+        # New plot
+        plt.figure()
+        plt.imshow(unfiltered_reconstructed, cmap='gray')
+        plt.title('Reconstructed Image (Unfiltered Sinogram)')
+        plt.axis('off')
 
         plt.tight_layout()
         plt.show()
