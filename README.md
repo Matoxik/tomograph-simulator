@@ -1,4 +1,3 @@
 ﻿# tomograph-simulator
 Authors:
--Maciej Andrzejewski
--Sławomir Stefański
+Maciej Andrzejewski,Sławomir Stefański
