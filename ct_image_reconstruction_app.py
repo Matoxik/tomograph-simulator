@@ -7,6 +7,12 @@ import matplotlib.backends.backend_tkagg as tkagg
 from matplotlib.figure import Figure
 import os
 from main import convolve_sinogram, radon_transform, inverse_radon_transform, transpose_sinogram
+from scipy import ndimage
+
+import pydicom
+from pydicom.dataset import Dataset, FileDataset
+import datetime
+
 
 # Default parameter values
 DEFAULT_STEP_ANGLE = 2.0  # Angular step of the emitter/detector system (in degrees)
@@ -14,9 +20,15 @@ DEFAULT_NUM_DETECTORS = 270  # Number of detectors (n)
 DEFAULT_FAN_ANGLE = 135  # Spread of the emitter/detector system (l) (in degrees)
 INTERMEDIATE_STEPS = 10  # Number of intermediate steps
 
-
 class CTImageReconstructionApp:
     def __init__(self, root):
+
+
+        self.patient_name = tk.StringVar()
+        self.patient_id = tk.StringVar()
+        self.exam_date = tk.StringVar(value=datetime.datetime.now().strftime('%Y%m%d'))
+        self.comments = tk.StringVar()
+
         self.root = root
         self.root.title("CT Image Reconstruction")
         self.root.geometry("1200x800")
@@ -36,6 +48,46 @@ class CTImageReconstructionApp:
         self.create_widgets()
 
     def create_widgets(self):
+        # DICOM metadata frame
+        dicom_frame = ttk.LabelFrame(self.root, text="DICOM Metadata", padding=10)
+        dicom_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+
+        # Patient Name
+        ttk.Label(dicom_frame, text="Patient Name:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.patient_name = tk.StringVar()
+        name_entry = ttk.Entry(dicom_frame, textvariable=self.patient_name, width=20)
+        name_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
+
+        # Patient ID
+        ttk.Label(dicom_frame, text="Patient ID:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=2)
+        self.patient_id = tk.StringVar()
+        id_entry = ttk.Entry(dicom_frame, textvariable=self.patient_id, width=15)
+        id_entry.grid(row=0, column=3, sticky=tk.W, padx=5, pady=2)
+
+        # Exam Date
+        ttk.Label(dicom_frame, text="Exam Date (YYYYMMDD):").grid(row=0, column=4, sticky=tk.W, padx=5, pady=2)
+        self.exam_date = tk.StringVar(value=datetime.datetime.now().strftime('%Y%m%d'))
+        date_entry = ttk.Entry(dicom_frame, textvariable=self.exam_date, width=12)
+        date_entry.grid(row=0, column=5, sticky=tk.W, padx=5, pady=2)
+
+        # Comments
+        ttk.Label(dicom_frame, text="Comments:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.comments = tk.StringVar()
+        comments_entry = ttk.Entry(dicom_frame, textvariable=self.comments, width=50)
+        comments_entry.grid(row=1, column=1, columnspan=4, sticky=tk.W + tk.E, padx=5, pady=2)
+
+        # Buttons for DICOM operations
+        dicom_buttons_frame = ttk.Frame(dicom_frame)
+        dicom_buttons_frame.grid(row=1, column=5, padx=5, pady=2)
+
+        # Load DICOM Button
+        load_dicom_btn = ttk.Button(dicom_buttons_frame, text="Load DICOM", command=self.load_dicom)
+        load_dicom_btn.pack(side=tk.LEFT, padx=2)
+
+        # Save DICOM Button
+        save_dicom_btn = ttk.Button(dicom_buttons_frame, text="Save as DICOM", command=self.save_dicom)
+        save_dicom_btn.pack(side=tk.LEFT, padx=2)
+
         # Frame for control panel
         control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(side=tk.TOP, fill=tk.X)
@@ -250,3 +302,145 @@ class CTImageReconstructionApp:
         self.ax4.axis('off')
 
         self.canvas.draw()
+
+    def load_dicom(self):
+        """Load image from a DICOM file"""
+        file_path = filedialog.askopenfilename(
+            title="Choose DICOM file",
+            filetypes=[("DICOM files", "*.dcm"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            try:
+                self.status_var.set(f"Loading DICOM image from {file_path}...")
+
+                # Read the DICOM file
+                ds = pydicom.dcmread(file_path)
+
+                # Extract pixel data as image
+                self.input_image = ds.pixel_array.astype(float)
+                if len(self.input_image.shape) > 2:  # If it's an RGB image
+                    self.input_image = rgb2gray(self.input_image)
+
+                # Normalize to 0-1 range
+                if self.input_image.max() > 0:
+                    self.input_image = self.input_image / self.input_image.max()
+
+                # Display original image
+                self.ax1.clear()
+                self.ax1.imshow(self.input_image, cmap='gray')
+                self.ax1.set_title("Original Image (DICOM)")
+                self.ax1.axis('off')
+
+                # Clear other plots
+                self.ax2.clear()
+                self.ax2.set_title("Sinogram")
+                self.ax2.axis('off')
+                self.ax3.clear()
+                self.ax3.set_title("Filtered Sinogram")
+                self.ax3.axis('off')
+                self.ax4.clear()
+                self.ax4.set_title("Reconstructed Image")
+                self.ax4.axis('off')
+
+                # Update DICOM metadata fields if available
+                if hasattr(ds, 'PatientName'):
+                    self.patient_name.set(str(ds.PatientName))
+                if hasattr(ds, 'PatientID'):
+                    self.patient_id.set(ds.PatientID)
+                if hasattr(ds, 'StudyDate'):
+                    self.exam_date.set(ds.StudyDate)
+                if hasattr(ds, 'ImageComments'):
+                    self.comments.set(ds.ImageComments)
+
+                self.canvas.draw()
+                self.status_var.set(f"DICOM image loaded successfully: {os.path.basename(file_path)}")
+            except Exception as e:
+                self.status_var.set(f"Error loading DICOM image: {str(e)}")
+
+    def save_dicom(self):
+        """Save the reconstructed image as a DICOM file with metadata"""
+        if self.reconstructed_image is None:
+            self.status_var.set("No reconstructed image to save.")
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            title="Save DICOM file",
+            defaultextension=".dcm",
+            filetypes=[("DICOM files", "*.dcm"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            try:
+                self.status_var.set(f"Saving reconstructed image as DICOM to {file_path}...")
+
+                # Create file meta information
+                file_meta = Dataset()
+                file_meta.MediaStorageSOPClassUID = '1.2.840.10008.5.1.4.1.1.2'  # CT Image Storage
+                file_meta.MediaStorageSOPInstanceUID = pydicom.uid.generate_uid()
+                file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+
+                # Create the FileDataset instance
+                ds = FileDataset(file_path, {}, file_meta=file_meta, preamble=b"\0" * 128)
+
+                # Set patient info
+                ds.PatientName = self.patient_name.get()
+                ds.PatientID = self.patient_id.get()
+
+                # Set study date
+                ds.StudyDate = self.exam_date.get()
+
+                # Set current time
+                current_time = datetime.datetime.now().time()
+                ds.StudyTime = current_time.strftime('%H%M%S.%f')
+
+                # Set comments
+                if self.comments.get():
+                    ds.ImageComments = self.comments.get()
+
+                # Set basic metadata needed for a valid DICOM file
+                ds.Modality = 'CT'
+                ds.SeriesInstanceUID = pydicom.uid.generate_uid()
+                ds.StudyInstanceUID = pydicom.uid.generate_uid()
+                ds.FrameOfReferenceUID = pydicom.uid.generate_uid()
+
+                # Set creation date/time
+                dt = datetime.datetime.now()
+                ds.ContentDate = dt.strftime('%Y%m%d')
+                ds.ContentTime = dt.strftime('%H%M%S.%f')
+
+                # Image-related attributes
+                ds.SamplesPerPixel = 1
+                ds.PhotometricInterpretation = "MONOCHROME2"
+                ds.PixelRepresentation = 0  # unsigned integer
+                ds.HighBit = 7
+                ds.BitsStored = 8
+                ds.BitsAllocated = 8
+
+                # Get the latest reconstructed image
+                if self.intermediate_steps:
+                    image_data = self.intermediate_steps[-1]
+                else:
+                    image_data = self.reconstructed_image
+
+                # Gaussian blur before saving
+                image_data = ndimage.gaussian_filter(image_data, sigma=0.5)
+
+                # Scaling to 8 bits (0-255)
+                image_data = (image_data * 255).astype(np.uint8)
+
+                # Set pixel data
+                ds.Rows, ds.Columns = image_data.shape
+                ds.PixelData = image_data.tobytes()
+
+                # Set transfer syntax
+                ds.is_little_endian = True
+                ds.is_implicit_VR = False
+
+                # Save the DICOM file
+                ds.save_as(file_path, write_like_original=False)
+
+                self.status_var.set(f"DICOM file saved successfully: {os.path.basename(file_path)}")
+            except Exception as e:
+                self.status_var.set(f"Error saving DICOM file: {str(e)}")
+

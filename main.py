@@ -9,8 +9,8 @@ from sklearn.metrics import mean_squared_error
 
 INTERMEDIATE_STEPS = 10
 
-# 1D Convolution
-def convolve_sinogram(img, kernelSize=9):
+# 1D Convolution (filtering)
+def convolve_sinogram(img, kernelSize=15):
     # Convert to numpy array if not already
     sino = np.array(img)
 
@@ -58,7 +58,11 @@ def generate_parallel_rays(radius, center, angle=45, span=120, num_rays=20):
 
 
 def radon_transform(image, num_steps=60, span=120, num_rays=250, max_angle=180):
-    sinogram = np.zeros((num_steps, num_rays))
+    #Each row of the sinogram will correspond to a projection at a specific angle
+    #Each column corresponds to one ray in a given projection
+    sinogram = np.zeros((num_steps, num_rays)) #number of scans/number of detectors
+
+
 
     for step_idx in range(num_steps):
         angle = step_idx * (max_angle / num_steps)
