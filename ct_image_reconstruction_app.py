@@ -6,7 +6,7 @@ from skimage.color import rgb2gray
 import matplotlib.backends.backend_tkagg as tkagg
 from matplotlib.figure import Figure
 import os
-from main import convolve_sinogram, radon_transform, inverse_radon_transform, transpose_sinogram
+from main import convolve_sinogram, radon_transform, inverse_radon_transform,normalize_data,get_max
 from scipy import ndimage
 
 import pydicom
@@ -244,18 +244,18 @@ class CTImageReconstructionApp:
             if self.use_filtering.get():
                 self.status_var.set("Filtering sinogram...")
                 self.root.update()
-                self.filtered_sinogram = np.array(convolve_sinogram(self.sinogram.tolist()))
+                self.filtered_sinogram = np.array(convolve_sinogram(normalize_data(self.sinogram.tolist(),get_max(self.sinogram))))
             else:
-                self.filtered_sinogram = self.sinogram
+                self.filtered_sinogram = normalize_data(self.sinogram,get_max(self.sinogram))
 
             # Display sinograms
             self.ax2.clear()
-            self.ax2.imshow(transpose_sinogram(self.sinogram), cmap="gray", aspect='auto')
+            self.ax2.imshow(self.sinogram, cmap="gray", aspect='auto')
             self.ax2.set_title("Original Sinogram")
             self.ax2.axis('off')
 
             self.ax3.clear()
-            self.ax3.imshow(transpose_sinogram(self.filtered_sinogram), cmap="gray", aspect='auto')
+            self.ax3.imshow(self.filtered_sinogram, cmap="gray", aspect='auto')
             self.ax3.set_title("Filtered Sinogram" if self.use_filtering.get() else "Original Sinogram")
             self.ax3.axis('off')
 

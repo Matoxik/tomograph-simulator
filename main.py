@@ -3,14 +3,14 @@ import tkinter as tk
 
 import numpy as np
 from skimage.draw import line_nd
-from sklearn.metrics import mean_squared_error
+
 
 
 
 INTERMEDIATE_STEPS = 10
 
 # 1D Convolution (filtering)
-def convolve_sinogram(img, kernelSize=15):
+def convolve_sinogram(img, kernelSize=9):
     # Convert to numpy array if not already
     sino = np.array(img)
 
@@ -33,7 +33,9 @@ def convolve_sinogram(img, kernelSize=15):
     # Apply convolution to each row using numpy.convolve
     for i in range(sino.shape[0]):
         filtered_sino[i, :] = np.convolve(sino[i, :], kernel, mode='same')
-
+    # np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+    # print("POSOTROWANY:\n")
+    # print(filtered_sino)
     return filtered_sino
 
 
@@ -57,6 +59,7 @@ def generate_parallel_rays(radius, center, angle=45, span=120, num_rays=20):
     return ray_list
 
 
+
 def radon_transform(image, num_steps=60, span=120, num_rays=250, max_angle=180):
     #Each row of the sinogram will correspond to a projection at a specific angle
     #Each column corresponds to one ray in a given projection
@@ -65,10 +68,10 @@ def radon_transform(image, num_steps=60, span=120, num_rays=250, max_angle=180):
 
 
     for step_idx in range(num_steps):
+        #
         angle = step_idx * (max_angle / num_steps)
         rays = generate_parallel_rays(max(image.shape[0] // 2, image.shape[1] // 2) * math.sqrt(2),
                                       (image.shape[0] // 2, image.shape[1] // 2), angle, span, num_rays)
-
         for ray_idx, ray in enumerate(rays):
             ray_value = 0
 
@@ -79,18 +82,18 @@ def radon_transform(image, num_steps=60, span=120, num_rays=250, max_angle=180):
             # Get line coordinates using skimage
             rr, cc = line_nd((y_d, x_d), (y_s, x_s), endpoint=True)
 
-            # Accumulate values
+            # Accumulate values (additives)
             for r, c in zip(rr, cc):
                 if 0 <= r < image.shape[0] and 0 <= c < image.shape[1]:
+                    # Add all pixel values
                     ray_value += image[r][c]
 
             sinogram[step_idx][ray_idx] = ray_value
-
+    #np.set_printoptions(threshold=np.inf, linewidth=np.inf)
+    #print(sinogram)
     return sinogram
 
 
-def transpose_sinogram(sinogram):
-    return [list(x) for x in zip(*sinogram)]
 
 
 def normalize_data(data, max_value):
@@ -117,6 +120,7 @@ def inverse_radon_transform(sinogram, image, num_steps=60, span=120, num_rays=25
             x_d, x_s = map(int, ray[0])
             y_d, y_s = map(int, ray[1])
 
+            # Marks pixels on a path
             # Get line coordinates using skimage
             rr, cc = line_nd((y_d, x_d), (y_s, x_s), endpoint=True)
 
@@ -126,23 +130,17 @@ def inverse_radon_transform(sinogram, image, num_steps=60, span=120, num_rays=25
                     reconstructed_image[r][c] += sinogram[step_idx][ray_idx]
                     max_value = max(max_value, reconstructed_image[r][c])
 
-        if compute_error:
-            error_list.append(mean_squared_error(reconstructed_image.flatten(),
-                                                 image.flatten()))
+
 
         # Saving intermediate image
         if save_intermediate and ((step_idx + 1) % step_size == 0 or step_idx == num_steps - 1):
             norm_image = normalize_data(reconstructed_image.copy(), max_value)
             intermediate_images.append(norm_image)
 
-    if not compute_error:
-        if save_intermediate:
-            return normalize_data(reconstructed_image, max_value), intermediate_images
-        return normalize_data(reconstructed_image, max_value)
-
     if save_intermediate:
-        return normalize_data(reconstructed_image, max_value), error_list, intermediate_images
-    return normalize_data(reconstructed_image, max_value), error_list
+        return normalize_data(reconstructed_image, max_value), intermediate_images
+    return normalize_data(reconstructed_image, max_value)
+
 
 
 def main():
